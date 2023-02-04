@@ -45,7 +45,14 @@ class TwoLayerNet(object):
         # weights and biases using the keys 'W1' and 'b1' and second layer weights #
         # and biases using the keys 'W2' and 'b2'.                                 #
         ############################################################################
-        pass
+        W1 = np.random.normal(0, weight_scale, (input_dim, hidden_dim))
+        b1 = np.zeros(hidden_dim,)
+        W2 = np.random.normal(0, weight_scale, (hidden_dim, num_classes))
+        b2 = np.zeros(num_classes,)
+        self.params['W1'] = W1
+        self.params['b1'] = b1
+        self.params['W2'] = W2
+        self.params['b2'] = b2
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -74,7 +81,18 @@ class TwoLayerNet(object):
         # TODO: Implement the forward pass for the two-layer net, computing the    #
         # class scores for X and storing them in the scores variable.              #
         ############################################################################
-        pass
+
+        X1 = np.reshape(X, (X.shape[0], -1)) #X1 is of size (N, D)
+        R1 = np.matmul(X1, self.params['W1']) + self.params['b1'] #R1 of size (N, H)
+        X2 = R1 * ((R1 > 0) * 1) #X2 of size (N, H)
+        R2 = np.matmul(X2, self.params["W2"]) + self.params['b2'] #R2 of size (N, C)
+
+        scores = R2
+
+        E = np.exp(R2) #E of size (N, C)
+        _sum = np.repeat(np.sum(E, axis = 1).reshape(-1,1), R2.shape[1], axis = 1)
+        S = E / _sum #S of size (N, C)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -95,11 +113,27 @@ class TwoLayerNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        pass
+        Y = np.zeros(S.shape)
+        for i in range(Y.shape[0]):
+          Y[i][y[i]] = 1
+        #makes Y of size (N, C), the one hot encoded
+
+        loss = (np.sum((0 - np.log(S)) * Y))/ X.shape[0] + 0.5 * self.reg * np.sum(self.params["W2"] ** 2) + 0.5 * self.reg * np.sum(self.params["W1"] ** 2)
+
+        dLdR2 = S - Y #size (N, C)
+        dR2dW2 = X2.T #size (H, N)
+        grads["W2"] = np.matmul(dR2dW2, dLdR2)/ X.shape[0] + self.reg * self.params["W2"] #it's now size (H, C)
+        grads["b2"] = np.matmul(dLdR2.T, np.ones(dLdR2.shape[0])) / X.shape[0] #(C, N) times (N, )
+        dLdX2 = np.matmul(dLdR2, self.params["W2"].T) #(N, C) times (C, H) = size (N, H)
+
+        d_before_relu = dLdX2 * ((R1 > 0) * 1) #size (N, H)
+        dBRdW1 = X1.T #size (D, N)
+        grads["W1"] = np.matmul(dBRdW1, d_before_relu) / X.shape[0] + self.reg * self.params["W1"] #it's now size (D, H)
+        grads["b1"] = np.matmul(d_before_relu.T, np.ones(d_before_relu.shape[0])) / X.shape[0] # (H, N) * (N, )
+        
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
-
         return loss, grads
 
 
@@ -157,7 +191,18 @@ class FullyConnectedNet(object):
         # weight_scale and biases should be initialized to zero.                   #
         #                                                                          #
         ############################################################################
-        pass
+        for i in range(self.num_layers):
+          if i == 0:
+            W = np.random.normal(0, weight_scale, (input_dim, hidden_dims[i]))
+            b = np.zeros(hidden_dims[i], )
+          elif i == self.num_layers - 1:
+            W = np.random.normal(0, weight_scale, (hidden_dims[i - 1], num_classes))
+            b = np.zeros(num_classes, )
+          else:
+            W = np.random.normal(0, weight_scale, (hidden_dims[i - 1], hidden_dims[i]))
+            b = np.zeros(hidden_dims[i], )
+          self.params["W" + str(i + 1)] = W
+          self.params["b" + str(i + 1)] = b
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -207,7 +252,16 @@ class FullyConnectedNet(object):
         # the class scores for X and storing them in the scores variable.          #
         #                                                                          #
         ############################################################################
-        pass
+        Z = []
+        r = np.reshape(X, (X.shape[0], -1))
+        for i in range(self.num_layers):
+          Z.append(r)
+          W = self.params["W" + str(i + 1)]
+          b = self.params["b" + str(i + 1)]
+          r = np.matmul(r, W) + b
+          if i != self.num_layers - 1:
+            r = r * ((r > 0) * 1) #relu
+        scores = r
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -229,7 +283,26 @@ class FullyConnectedNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        pass
+        E = np.exp(r) #E of size (N, C)
+        _sum = np.repeat(np.sum(E, axis = 1).reshape(-1,1), r.shape[1], axis = 1)
+        S = E / _sum #S of size (N, C)
+        Y = np.zeros(S.shape)
+        for i in range(Y.shape[0]):
+          Y[i][y[i]] = 1
+        loss = (np.sum((0 - np.log(S)) * Y))/ X.shape[0]
+        for i in range(self.num_layers):
+          W = self.params["W" + str(i + 1)]
+          loss += 0.5 * self.reg * np.sum(W ** 2)
+
+        dout = (S - Y) / X.shape[0]
+        for i in range(self.num_layers):
+          label = self.num_layers - i
+          z = Z[self.num_layers - 1 - i]
+          W = self.params["W" + str(label)]
+          grads["W" + str(label)] = np.matmul(z.T, dout) + self.reg * W
+          grads["b" + str(label)] = np.matmul(dout.T, np.ones(dout.shape[0]))
+          dout = np.matmul(dout, W.T)
+          dout = dout * ((z > 0) * 1)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
